@@ -1,0 +1,51 @@
+# Environment & Secrets (NEVER push these)
+.env
+.env.local
+.env.production
+.env.staging
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+*.pkl
+*.pt
+*.h5
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
+
+# ML Models (too large for git)
+core-engine/workers/ml_predictor/models/*.pkl
+core-engine/workers/ml_predictor/models/*.pt
+
+# Database
+*.sqlite
+*.db
