@@ -1,0 +1,16 @@
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(100) UNIQUE NOT NULL,
+    tier VARCHAR(20) NOT NULL DEFAULT 'free',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS alert_configs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    coin VARCHAR(20) NOT NULL,
+    min_usd DOUBLE PRECISION NOT NULL,
+    channels TEXT[] NOT NULL,
+    filters JSONB,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
