@@ -1,0 +1,174 @@
+version: '3.8'
+
+# 🐋 Crypto Whale Tracker — Local Development Stack Configuration
+# This file spins up the entire local services with hot-reloading enabled.
+# Run with: docker compose -f docker-compose.dev.yml up
+
+services:
+  # ==========================================
+  # 1. Redis: In-memory store, streams, and pub/sub
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: whale_redis_dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - whale-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ==========================================
+  # 2. TimescaleDB (PostgreSQL with Time-Series Support)
+  # ==========================================
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: whale_postgres_dev
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-whale_tracker}
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pass}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - whale-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-user} -d $${POSTGRES_DB:-whale_tracker}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ==========================================
+  # 3. Data Layer: WebSocket ingestion from CEX & On-chain RPCs
+  # ==========================================
+  data-layer:
+    build:
+      context: ./data-layer/python
+      dockerfile: Dockerfile
+    container_name: whale_data_layer_dev
+    volumes:
+      - ./data-layer/python:/app
+    env_file:
+      - .env
+    networks:
+      - whale-net
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ==========================================
+  # 4. Core Engine: Brain, ML models, TA, and signal combination
+  # ==========================================
+  core-engine:
+    build:
+      context: ./core-engine
+      dockerfile: Dockerfile
+    container_name: whale_core_engine_dev
+    volumes:
+      - ./core-engine:/app
+    env_file:
+      - .env
+    networks:
+      - whale-net
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ==========================================
+  # 5. API Layer: FastAPI endpoints, REST/WebSockets
+  # ==========================================
+  api-layer:
+    build:
+      context: ./api-layer
+      dockerfile: Dockerfile
+    container_name: whale_api_layer_dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api-layer:/app
+    env_file:
+      - .env
+    networks:
+      - whale-net
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      core-engine:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ==========================================
+  # 6. Alert Workers: Separate worker thread for notifications
+  # ==========================================
+  alert-workers:
+    build:
+      context: ./api-layer
+      dockerfile: Dockerfile
+    container_name: whale_alert_workers_dev
+    command: python alert-workers/telegram_worker.py
+    volumes:
+      - ./api-layer:/app
+    env_file:
+      - .env
+    networks:
+      - whale-net
+    depends_on:
+      redis:
+        condition: service_healthy
+      api-layer:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ==========================================
+  # 7. Frontend: Next.js Web Application
+  # ==========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: whale_frontend_dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src
+    env_file:
+      - .env
+    networks:
+      - whale-net
+    depends_on:
+      api-layer:
+        condition: service_started
+    restart: unless-stopped
+
+networks:
+  whale-net:
+    driver: bridge
+
+volumes:
+  redis_data:
+    name: whale_redis_data
+  postgres_data:
+    name: whale_postgres_data
